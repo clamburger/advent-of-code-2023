@@ -49,25 +49,25 @@ class Day05IfYouGiveASeedAFertilizer extends AbstractPuzzle
 
         $locations = [];
 
-        echo "SOIL\n=====\n";
+//        echo "SOIL\n=====\n";
         $soilRanges = $this->findRangeMapping('seed', $this->seedRanges);
 
-        echo "FERTILIZER\n=====\n";
+//        echo "FERTILIZER\n=====\n";
         $fertilizerRanges = $this->findRangeMapping('soil', $soilRanges);
 
-        echo "WATER\n=====\n";
+//        echo "WATER\n=====\n";
         $waterRanges = $this->findRangeMapping('fertilizer', $fertilizerRanges);
 
-        echo "LIGHT\n=====\n";
+//        echo "LIGHT\n=====\n";
         $lightRanges = $this->findRangeMapping('water', $waterRanges);
 
-        echo "TEMPERATURE\n=====\n";
+//        echo "TEMPERATURE\n=====\n";
         $temperatureRanges = $this->findRangeMapping('light', $lightRanges);
 
-        echo "HUMIDITY\n=====\n";
+//        echo "HUMIDITY\n=====\n";
         $humidityRanges = $this->findRangeMapping('temperature', $temperatureRanges);
 
-        echo "LOCATION\n=====\n";
+//        echo "LOCATION\n=====\n";
         $locationRanges = $this->findRangeMapping('humidity', $humidityRanges);
 
         usort($locationRanges, fn ($a, $b) => $a['start'] <=> $b['start']);
@@ -81,7 +81,7 @@ class Day05IfYouGiveASeedAFertilizer extends AbstractPuzzle
         $this->seedRanges = [];
         $this->maps = [];
 
-        $blocks = $this->input->lines_by_block;
+        $blocks = unserialize(serialize($this->input->lines_by_block));
         $blocks->shift();
 
         /** @var Stringable $line */
@@ -158,10 +158,10 @@ class Day05IfYouGiveASeedAFertilizer extends AbstractPuzzle
         while (!empty($rangesToProcess)) {
             $range = array_shift($rangesToProcess);
 
-            echo "Range: " . $range['start'] . "-" . $range['end'] . "\n";
+//            echo "Range: " . $range['start'] . "-" . $range['end'] . "\n";
 
             foreach ($map as $mapping) {
-                echo "  Map: " . $mapping['source'] . "-" . $mapping['source end'] . "\n";
+//                echo "  Map: " . $mapping['source'] . "-" . $mapping['source end'] . "\n";
                 $split = $this->splitRanges($mapping, $range);
 
                 if (count($split) === 1) {
@@ -211,14 +211,14 @@ class Day05IfYouGiveASeedAFertilizer extends AbstractPuzzle
 
         // No overlap at all: return as-is
         if (!$startWithinRange && !$endWithinRange) {
-            echo "    No overlap\n";
+//            echo "    No overlap\n";
             $range['processed'] = false;
             return collect([$range]);
         }
 
         // Fully within range: return a single range shifted up or down
         if ($startWithinRange && $endWithinRange) {
-            echo "    Full overlap\n";
+//            echo "    Full overlap\n";
             $range['start'] = $range['start']->plus($mapping['delta']);
             $range['end'] = $range['end']->plus($mapping['delta']);
             $range['processed'] = true;
@@ -227,7 +227,7 @@ class Day05IfYouGiveASeedAFertilizer extends AbstractPuzzle
 
         // Range overlaps on the upper end: return two ranges, the first shifted, the second unchanged
         if ($startWithinRange && !$endWithinRange) {
-            echo "    Partial overlap upper end\n";
+//            echo "    Partial overlap upper end\n";
             $range1 = [
                 'start' => $range['start']->plus($mapping['delta']),
                 'end' => $mapping['source end']->plus($mapping['delta']),
@@ -247,7 +247,7 @@ class Day05IfYouGiveASeedAFertilizer extends AbstractPuzzle
 
         // Range overlaps on the lower end: return two ranges, the first unchanged, the second shifted
         if (!$startWithinRange && $endWithinRange) {
-            echo "    Partial overlap lower end\n";
+//            echo "    Partial overlap lower end\n";
             $range1 = [
                 'start' => $range['start'],
                 'end' => $mapping['source']->minus(1),
