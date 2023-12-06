@@ -6,7 +6,7 @@ use App\Puzzles\AbstractPuzzle;
 require __DIR__ . '/vendor/autoload.php';
 
 echo "====================================\n";
-echo "Welcome to Sam's Advent of Code 2022\n";
+echo "Welcome to Sam's Advent of Code 2023\n";
 echo "====================================\n";
 echo "\n";
 
