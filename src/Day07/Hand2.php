@@ -15,6 +15,8 @@ class Hand2 implements Stringable
     public const int ONE_PAIR = 4_00_00_00_00_00;
     public const int HIGH_CARD = 3_00_00_00_00_00;
 
+    public const array RESULTS = [9 => '5 of a kind', 8 => '4 of a kind', 7 => 'Full house', 6 => 'three of a kind', 5 => 'two pair', 4 => 'One pair', 3 => 'High card'];
+
     public array $cards;
 
     public int $bid;
@@ -23,6 +25,7 @@ class Hand2 implements Stringable
 
     public int $betterStrength;
     public string $bestHand;
+    public string $bestCard;
 
 
     public function __construct(public string $line)
@@ -54,6 +57,7 @@ class Hand2 implements Stringable
 
         $baseStrength = self::baseStrength($cards);
         $bestCard = $baseStrength['best card'];
+        $this->bestCard = $bestCard;
 
         $newCards = implode('', $this->cards);
         $newCards = str_replace('J', $bestCard, $newCards);
@@ -141,8 +145,8 @@ class Hand2 implements Stringable
             $strength = self::HIGH_CARD;
 
             // Doesn't matter lol
-            foreach ($unique as $card) {
-                if (strtolower($card) !== $card) {
+            foreach ($cards as $card) {
+                if (strtoupper($card) === $card) {
                     $bestCard = $card;
                 }
             }
@@ -176,6 +180,14 @@ class Hand2 implements Stringable
 
     public function __toString(): string
     {
-        return implode(' ', $this->cards) . ' (as ' . $this->bestHand . ')';
+        $strength0 = ((string)$this->betterStrength)[0];
+        $text = implode(' ', $this->cards) . ' (as ' . $this->bestHand . ')' . ', best card ' . $this->bestCard . '     [' . self::RESULTS[$strength0] .']';
+        if (!collect($this->cards)->contains('J')) {
+            $text .= '  no J';
+        }
+
+        $text = str_replace(['A', 'K', 'Q', 'T', 'J'], ['D', 'C', 'B', 'A', '1'], $text);
+
+        return $text;
     }
 }

@@ -4,7 +4,6 @@ namespace App\Puzzles;
 
 use App\Day07\Hand;
 use App\Day07\Hand2;
-use App\Puzzles\AbstractPuzzle;
 use Override;
 
 class Day07CamelCards extends AbstractPuzzle
@@ -46,6 +45,7 @@ class Day07CamelCards extends AbstractPuzzle
         $total = 0;
 
         foreach ($hands as $index => $hand) {
+//            echo str_pad($index, 5) . $hand . "\n";
             $rank = $index + 1;
             $total += $hand->bid * $rank;
         }
