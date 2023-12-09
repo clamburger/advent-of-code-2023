@@ -8,95 +8,105 @@ class Day08HauntedWasteland extends AbstractPuzzle
 {
     protected static int $day_number = 8;
 
-    #[Override]
-    public function getPartOneAnswer(): int|string
-    {
-        $instructions = str_split($this->input->lines_by_block->first()->first());
+    private array $map;
+    private array $instructions;
 
-        $map = [];
+    private array $cycles = [];
+
+    private function parseInput()
+    {
+        $this->instructions = str_split($this->input->lines_by_block->first()->first());
+        $this->map = [];
 
         foreach ($this->input->lines_by_block->get(1) as $line) {
             [$from, $to] = $line->explode(' = ');
             [$left, $right] = explode(', ', trim($to, '()'));
 
-            $map[$from] = ['L' => $left, 'R' => $right];
+            $this->map[$from] = ['L' => $left, 'R' => $right];
         }
+    }
+
+    #[Override]
+    public function getPartOneAnswer(): int|string
+    {
+        $this->parseInput();
 
         $count = 0;
 
         $at = 'AAA';
-        $steps = $instructions;
+        $steps = $this->instructions;
         while ($at !== 'ZZZ') {
             if (empty($steps)) {
-                $steps = $instructions;
+                $steps = $this->instructions;
             }
             $step = array_shift($steps);
-            $at = $map[$at][$step];
+            $at = $this->map[$at][$step];
             $count++;
         }
 
         return $count;
     }
 
+    private function findCycleLength(string $start, int $index)
+    {
+        $at = $start;
+
+        $last = -1;
+
+        $instances = [];
+
+        $i = 0;
+        while (count($instances) < 10) {
+            $step = $this->instructions[$i % count($this->instructions)];
+            $at = $this->map[$at][$step];
+
+            if (str_ends_with($at, 'Z')) {
+//                echo "[$index] Found Z: $at, $i (diff " . ($i - $last) . ")\n";
+                $instances[] = $i;
+                $last = $i;
+            }
+
+            $i++;
+        }
+
+        // no particular reason to do it this way other than it was easy with what I already had
+        return $instances[9] - $instances[8];
+    }
+
     #[Override]
     public function getPartTwoAnswer(): int|string
     {
-        $instructions = str_split($this->input->lines_by_block->first()->first());
+        $this->parseInput();
 
-        $map = [];
+        $starts = collect($this->map)->keys()->filter(fn ($s) => str_ends_with($s, 'A'))->values()->toArray();
 
-        foreach ($this->input->lines_by_block->get(1) as $line) {
-            [$from, $to] = $line->explode(' = ');
-            [$left, $right] = explode(', ', trim($to, '()'));
+        $cycleLengths = [];
 
-            $map[$from] = ['L' => $left, 'R' => $right];
+        foreach ($starts as $index => $start) {
+            $cycleLengths[] = $this->findCycleLength($start, $index);
         }
 
-        $count = 0;
+        return array_reduce($cycleLengths, fn (int $carry, int $value) => self::lcm($carry, $value), 1);
+    }
 
-        $ats = collect($map)->keys()->filter(fn ($s) => str_ends_with($s, 'A'))->values()->toArray();
-        $steps = $instructions;
+    public static function lcm(int $a, int $b): int
+    {
+        return $a * $b / self::gcd($a, $b);
+    }
 
-        $cycleDetector = [];
-        $cycleFound = array_fill(0, count($ats), false);
+    /**
+     * Euclid's algorithm
+     *
+     * Not entirely sure how this works, copied from Wikipedia
+     */
+    private static function gcd(int $a, int $b): int
+    {
+        while ($b !== 0) {
+            $temp = $b;
+            $b = $a % $b;
+            $a = $temp;
+        }
 
-        do {
-            $count++;
-
-            if (empty($steps)) {
-                $steps = $instructions;
-            }
-            $step = array_shift($steps);
-
-
-            foreach ($ats as $i =>  &$at) {
-                $at = $map[$at][$step];
-                if (!isset($cycleDetector[$i][$at])) {
-                    $cycleDetector[$i][$at] = [];
-                }
-
-                if (count($cycleDetector[$i][$at]) === 1 && !$cycleFound[$i]) {
-                    $start = $cycleDetector[$i][$at][0];
-                    echo "[$i] Cycle detected starting at $count, first seen at $start / $at\n";
-                    $cycleFound[$i] = ['start' => $start, 'end' => $count, 'at' => $at, 'length' => $count - $start + 1];
-                }
-                $cycleDetector[$i][$at][] = $count;
-            }
-
-            if (count(array_filter($cycleFound)) === count($ats)) {
-                break;
-            }
-
-            $conditionsMet = collect($ats)->filter(fn ($s) => str_ends_with($s, 'Z'))->count() === count($ats);
-
-//            if ($count % 100000 === 0) {
-                echo $count . ". " . implode(", ", $ats) . "\n";
-//            }
-
-        } while (!$conditionsMet);
-
-        dump($cycleFound);
-
-        return $count;
+        return $a;
     }
 }
