@@ -2,117 +2,21 @@
 
 namespace App\Puzzles;
 
+use Illuminate\Support\Collection;
 use Override;
 
 class Day10PipeMaze extends AbstractPuzzle
 {
-    protected static int $day_number = 10;
-
-    private array $grid;
-    private array $start;
-    private string $startType;
-
-    private array $fakeGrid;
-    private array $fakeToRealCoords;
-
-    private array $partOfMainLoop;
-
-    private array $partOfFakeMainLoop;
-
-    #[Override]
-    public function getPartOneAnswer(): int|string
-    {
-        $this->parseInput();
-        $this->partOfMainLoop = [];
-
-        $position = $this->start;
-        $type = $this->startType;
-
-        $visited = [];
-        $count = 0;
-
-        while (true) {
-            if ($type === 'S') {
-                break;
-            }
-            $directions = self::PIPE_TYPES[$type];
-
-            $candidateFound = null;
-            $count++;
-
-            foreach ($directions as $direction) {
-                $coords = self::DIRECTIONS[$direction];
-                $candidateCoords = [
-                    'x' => $position['x'] + $coords['x'],
-                    'y' => $position['y'] + $coords['y'],
-                ];
-
-                if (isset($visited[json_encode($candidateCoords)])) {
-                    continue;
-                }
-
-                $position = $candidateCoords;
-                $type = $this->grid[$candidateCoords['y']][$candidateCoords['x']];
-                $visited[json_encode($position)] = $count;
-                $this->partOfMainLoop[$candidateCoords['y']][$candidateCoords['x']] = true;
-                $candidateFound = true;
-                break;
-            }
-
-
-            if (!$candidateFound) {
-                break;
-            }
-        }
-
-        return $count / 2;
-    }
-
-    #[Override]
-    public function getPartTwoAnswer(): int|string
-    {
-//        $this->parseInput();
-        $this->getPartOneAnswer();
-
-        $this->drawMap($this->grid);
-
-        $this->expandGrid();
-
-        $this->drawMap($this->fakeGrid, 'Expanded Map', true);
-
-        $this->floodFill();
-
-        $this->drawMap($this->fakeGrid, 'Filled', true);
-
-        $inside = 0;
-
-        foreach ($this->fakeGrid as $y => $row) {
-            foreach ($row as $x => $symbol) {
-                if ($symbol === 'O') {
-                    continue;
-                }
-                if (isset($this->fakeToRealCoords[$y][$x]) && !$this->partOfLoop($x, $y)) {
-                    $inside++;
-                }
-            }
-        }
-
-        return $inside;
-    }
-
-    public const LEFT = ['x' => -1, 'y' => 0];
-    public const RIGHT = ['x' => 1, 'y' => 0];
-    public const UP = ['x' => 0, 'y' => -1];
-    public const DOWN = ['x' => 0, 'y' => 1];
-
-    public const DIRECTIONS = [
-        'left' => self::LEFT,
-        'right' => self::RIGHT,
-        'up' => self::UP,
-        'down' => self::DOWN,
+    public const array DIRECTIONS = [
+        'down'  =>  ['x' =>  0, 'y' =>  1],
+        'left'  =>  ['x' => -1, 'y' =>  0],
+        'right' =>  ['x' =>  1, 'y' =>  0],
+        'up'    =>  ['x' =>  0, 'y' => -1],
     ];
 
-    public const PIPE_TYPES = [
+    public const array PIPE_TYPES = [
+        'S' => [],
+        '.' => [],
         '|' => ['down', 'up'],
         '-' => ['left', 'right'],
         'L' => ['right', 'up'],
@@ -121,217 +25,290 @@ class Day10PipeMaze extends AbstractPuzzle
         'F' => ['down', 'right'],
     ];
 
-    private function parseInput()
+    protected static int $day_number = 10;
+
+    /**
+     * @var Collection<Collection<string>>
+     */
+    private Collection $grid;
+
+    /**
+     * @var Collection<Collection<string>>
+     */
+    private Collection $fakeGrid;
+
+    /**
+     * @var array{x: int, y: int}
+     */
+    private array $start;
+
+    /**
+     * @var array<int, array<int, true>>
+     */
+    private array $mainLoop;
+
+    /**
+     * @var array<int, array<int, true>>
+     */
+    private array $fakeLoop;
+
+    #[Override]
+    public function getPartOneAnswer(): int|string
     {
-        $start = [];
-        $grid = [];
+        $this->parseInput();
+        $this->findMainLoop();
 
-        // Surround the grid with blanks
-        $processedGrid = $this->input->grid->map(fn ($line) => $line->prepend('.')->push('.'));
-        $processedGrid = $processedGrid
-            ->prepend(array_fill(0, count($processedGrid->first()), '.'))
-            ->push(array_fill(0, count($processedGrid->first()), '.'));
+        return collect($this->mainLoop)->flatten()->count() / 2;
+    }
 
-        // Find the start
-        foreach ($processedGrid as $y => $row) {
+    #[Override]
+    public function getPartTwoAnswer(): int|string
+    {
+        $this->parseInput();
+        $this->findMainLoop();
+//        $this->drawMap($this->grid);
+        $this->expandGrid();
+//        $this->drawMap($this->fakeGrid, 'Expanded Map', true);
+        $this->floodFill();
+//        $this->drawMap($this->fakeGrid, 'Filled', true);
+
+        $inside = 0;
+
+        foreach ($this->fakeGrid as $y => $row) {
             foreach ($row as $x => $symbol) {
-                // Copy grid so we can modify it
-                $grid[$y][$x] = $symbol;
-                if ($symbol === 'S') {
-                    $start = ['x' => $x, 'y' => $y];
-                    break 2;
+                if ($symbol === 'O') {
+                    continue;
+                }
+                if ($x % 2 === 0 && $y % 2 === 0 && !$this->partOfLoop($x, $y)) {
+                    $inside++;
                 }
             }
         }
 
-        $startType = null;
-        $startConnections = [];
+        return $inside;
+    }
 
-        // Determine which connections the start pipe can have with its neighbours
-        foreach (self::DIRECTIONS as $direction => $relativeCoords) {
-            $neighbourX = $start['x'] + $relativeCoords['x'];
-            $neighbourY = $start['y'] + $relativeCoords['y'];
+    private function parseInput(): void
+    {
+        // Surround the grid with blanks (needed for the flood fill in part 2)
+        $width = $this->input->grid->first()->count();
 
-            $neighbour = $processedGrid[$neighbourY][$neighbourX] ?? null;
-            if (!$neighbour || $neighbour === '.') {
-                continue;
-            }
+        $grid = unserialize(serialize($this->input->grid));
 
-            $type = self::PIPE_TYPES[$neighbour];
-            foreach ($type as $connection) {
-                $coords = self::DIRECTIONS[$connection];
+        $this->grid = $grid
+            // Top
+            ->prepend(collect()->pad($width, '.'))
+            // Bottom
+            ->push(collect()->pad($width, '.'))
+            // Left and right
+            ->map(fn ($line) => $line->prepend('.')->push('.'));
 
-                if ($neighbourY + $coords['y'] === $start['y'] && $neighbourX + $coords['x'] === $start['x']) {
-                    $startConnections[] = $direction;
-                }
+        // Find the start position.
+        // Two foreach loops would be much simpler and easier to understand,
+        // but sometimes it's nice to be a little too 'clever'.
+        $this->start = $this->grid
+            ->map->search('S')
+            ->filter()
+            ->mapWithKeys(fn ($x, $y) => [['x' => $x, 'y' => $y]])
+            ->first();
+
+        // Check to see which of the start's neighbours have a connection to the start.
+        // This will allow the actual pipe type of the start to be identified.
+        $connections = [];
+        $neighbours = $this->getNeighbours($this->start);
+        foreach ($neighbours as $direction => $neighbour) {
+            if ($this->doesPipeLeadToAnother($neighbour, $this->start)) {
+                $connections[] = $direction;
             }
         }
 
-        assert(count($startConnections) === 2, 'startConnections must have exactly 2 values');
+        $type = collect(self::PIPE_TYPES)->search($connections);
 
-        // Identify the type of the start pipe
-        sort($startConnections);
-        foreach (self::PIPE_TYPES as $type => $directions) {
-            if (json_encode($directions) === json_encode($startConnections)) {
-                $startType = $type;
-            }
-        }
-
-        assert($startType, 'startType must have a value');
-
-        $this->grid = $processedGrid->toArray();
-        $this->start = $start;
-        $this->startType = $startType;
+        // Once we've identified the type, replace it in the grid.
+        $this->grid[$this->start['y']][$this->start['x']] = $type;
     }
 
     /**
-     * Create an expanded grid that's 2x the width and 2x the height
+     * Finds which pipes are part of the main loop, storing the result.
      */
-    public function expandGrid()
+    private function findMainLoop(): void
     {
-        $fakeWidth = count($this->grid[0]) * 2 - 1;
-        $fakeGrid = [];
-        $fakeToRealMap = [];
+        $this->mainLoop = [];
 
-        $fakeY = -1;
+        $position = $this->start;
 
-        $realGrid = $this->grid;
+        while (true) {
+            $this->mainLoop[$position['y']][$position['x']] = true;
+            $symbol = $this->grid[$position['y']][$position['x']];
+            $directions = self::PIPE_TYPES[$symbol];
 
-        foreach ($this->grid as $y => $row) {
-            if ($y !== 0) {
-                // no expansion needed for first row
-                $fakeY++;
+            $candidateFound = false;
 
-                // Slightly confusing here as we want to use the fake X but the real Y
-                for ($fakeX = 0; $fakeX < $fakeWidth; $fakeX++) {
-                    // Odd numbers are never connected
-                    if ($fakeX % 2 === 1) {
-                        $toPlace = '.';
-                    } else {
-                        $x = $fakeX / 2;
+            foreach ($directions as $direction) {
+                $coords = self::DIRECTIONS[$direction];
+                $candidateCoords = [
+                    'x' => $position['x'] + $coords['x'],
+                    'y' => $position['y'] + $coords['y'],
+                ];
 
-                        $position  = ['x' => $x, 'y' => $y];
-                        $neighbour = ['x' => $x, 'y' => $y - 1];
-                        if ($this->arePipesConnected($realGrid, $position, $neighbour)) {
-                            $toPlace = '|';
-                            if (isset($this->partOfMainLoop[$position['y']][$position['x']])) {
-                                $this->partOfFakeMainLoop[$fakeY][$fakeX] = true;
-                            }
-                        } else {
-                            $toPlace = '.';
-                        }
-
-                        if ($fakeX % 2 === 0 && $fakeY % 2 === 0) {
-                            $fakeToRealMap[$fakeY][$fakeX] = ['x' => $x, 'y' => $y];
-                        }
-                    }
-
-                    $fakeGrid[$fakeY][$fakeX] = $toPlace;
+                if (isset($this->mainLoop[$candidateCoords['y']][$candidateCoords['x']])) {
+                    continue;
                 }
+
+                $position = $candidateCoords;
+                $this->mainLoop[$candidateCoords['y']][$candidateCoords['x']] = true;
+                $candidateFound = true;
+                break;
             }
 
-            $fakeY++;
-            $fakeX = -1;
+            if (!$candidateFound) {
+                break;
+            }
+        }
+    }
 
-            // Expand the row horizontally
-            // Expanded tiles will only ever be - or .
+    /**
+     * @param array{x: int, y: int} $position
+     *
+     * @return array<string, array{x: int, y:int}>
+     */
+    private function getNeighbours(array $position): array
+    {
+        $neighbours = [];
+        foreach (self::DIRECTIONS as $direction => $relativeCoords) {
+            $x = $position['x'] + $relativeCoords['x'];
+            $y = $position['y'] + $relativeCoords['y'];
 
+            $neighbour = $this->grid[$y][$x] ?? null;
+            if ($neighbour) {
+                $neighbours[$direction] = ['x' => $x, 'y' => $y];
+            }
+        }
+
+        return $neighbours;
+    }
+
+    /**
+     * Create an expanded grid that's 2x the width and 2x the height.
+     */
+    private function expandGrid(): void
+    {
+        // Multiple all X and Y coordinates by 2.
+        // This will leave gaps between all rows and columns.
+        $this->fakeGrid = $this->grid->mapWithKeys(fn (Collection $row, int $y) => [
+            $y * 2 => $row->mapWithKeys(fn (string $symbol, int $x) => [
+                $x * 2 => $symbol,
+            ])
+        ]);
+
+        $fakeWidth = $this->fakeGrid->first()->keys()->last();
+        $fakeHeight = $this->fakeGrid->keys()->last();
+
+        // To populate the gaps we've added in the grid, we check to see if the pipes on each
+        // side of the gap would be connecting without the gap. If so, we add a fake connection
+        // to join them, otherwise the space is left blank.
+
+        // First pass: connect the columns horizontally.
+        // Iterate through the original rows but the gaps between the original columns.
+
+        for ($fakeY = 0; $fakeY <= $fakeHeight; $fakeY += 2) {
+            for ($fakeX = 1; $fakeX <= $fakeWidth; $fakeX += 2) {
+                // Real coordinates
+                $left  = ['x' => ($fakeX - 1) / 2, 'y' => $fakeY / 2];
+                $right = ['x' => ($fakeX + 1) / 2, 'y' => $fakeY / 2];
+
+                if ($this->arePipesConnected($left, $right)) {
+                    $this->fakeGrid[$fakeY][$fakeX] = '-';
+
+                    if (isset($this->mainLoop[$left['y']][$left['x']])) {
+                        $this->fakeLoop[$fakeY][$fakeX] = true;
+                    }
+                } else {
+                    $this->fakeGrid[$fakeY][$fakeX] = '.';
+                }
+            }
+        }
+
+        $this->fakeGrid = $this->fakeGrid->map->sortKeys();
+
+        // Second pass: connect the rows vertically.
+        // Iterate through the gaps between the rows and the original columns.
+        for ($fakeY = 1; $fakeY <= $fakeHeight; $fakeY += 2) {
+            $this->fakeGrid[$fakeY] = collect()->pad($fakeWidth + 1, '.');
+
+            for ($fakeX = 0; $fakeX <= $fakeWidth; $fakeX += 2) {
+                // Real coordinates
+                $above = ['x' => $fakeX / 2, 'y' => ($fakeY - 1) / 2];
+                $below = ['x' => $fakeX / 2, 'y' => ($fakeY + 1) / 2];
+
+                if ($this->arePipesConnected($above, $below)) {
+                    $this->fakeGrid[$fakeY][$fakeX] = '|';
+
+                    if (isset($this->mainLoop[$above['y']][$above['x']])) {
+                        $this->fakeLoop[$fakeY][$fakeX] = true;
+                    }
+                }
+            }
+        }
+
+        $this->fakeGrid = $this->fakeGrid->sortKeys();
+    }
+
+    private function drawMap(Collection $grid, string $label = 'Map', bool $fake = false): void
+    {
+        $boxChars = [
+            '.' => '·',
+            '-' => '─',
+            '|' => '│',
+            'L' => '└',
+            'J' => '┘',
+            '7' => '┐',
+            'F' => '┌',
+            'S' => '⊕',
+            'O' => ' ',
+        ];
+
+        echo "$label:\n";
+        foreach ($grid as $y => $row) {
             foreach ($row as $x => $symbol) {
-                if ($x !== 0) {
-                    // no expansion needed for first column
-                    $fakeX++;
-                    $position  = ['x' => $x, 'y' => $y];
-                    $neighbour = ['x' => $x - 1, 'y' => $y];
+                $drawSymbol = $boxChars[$symbol] ?? $symbol;
 
-                    if ($this->arePipesConnected($realGrid, $position, $neighbour)) {
-                        $toPlace = '-';
-                        if (isset($this->partOfMainLoop[$position['y']][$position['x']])) {
-                            $this->partOfFakeMainLoop[$fakeY][$fakeX] = true;
-                        }
-                    } else {
-                        $toPlace = '.';
-                    }
-
-                    $fakeGrid[$fakeY][$fakeX] = $toPlace;
-                }
-
-                // Place the original symbol
-                $fakeX++;
-                $fakeGrid[$fakeY][$fakeX] = $symbol;
-                if ($fakeX % 2 === 0 && $fakeY % 2 === 0) {
-                    $fakeToRealMap[$fakeY][$fakeX] = ['x' => $x, 'y' => $y];
+                if ($fake && $this->partOfFakeLoop($x, $y)) {
+                    // MAIN LOOP (fake only) - light green
+                    echo $this->colour($drawSymbol, 30, 104);
+                } elseif ($fake && $this->partOfMainLoop($x, $y)) {
+                    echo $this->colour($drawSymbol, 30, 104);
+                } elseif (!$fake && $this->partOfMainLoop($x * 2, $y * 2)) {
+                    // MAIN LOOP (real only) - light blue
+                    echo $this->colour($drawSymbol, 30, 104);
+                } elseif ($symbol === 'O') {
+                    // Dark grey
+                    echo $this->colour($drawSymbol, 30);
+                } elseif ($fake && $x % 2 === 0 && $y % 2 === 0) {
+                    echo $this->colour($drawSymbol, 101, 30, 1);
+                } else {
+                    echo $this->colour($drawSymbol, 103, 33);
                 }
             }
+            echo "\n";
         }
-
-        $this->fakeGrid = $fakeGrid;
-        $this->fakeToRealCoords = $fakeToRealMap;
     }
 
-    public function drawMap(array $grid, string $label = 'Map', bool $fake = false): void
+    private function colour(string $string, int ...$colours): string
     {
-//        echo "$label:\n";
-//        foreach ($grid as $y => $row) {
-//            foreach ($row as $x => $symbol) {
-//                if ($fake) {
-//                    $realCoords = $this->fakeToRealCoords[$y][$x] ?? null;
-//                } else {
-//                    $realCoords = ['x' => $x, 'y' => $y];
-//                }
-//
-//                if ($fake && $this->partOfFakeLoop($x, $y)) {
-//                    // MAIN LOOP (fake only) - light green
-//                    echo $this->colour2($symbol, 30, 104);
-//                } elseif ($fake && $this->partOfMainLoop($x, $y)) {
-//                    echo $this->colour2($symbol, 30, 104);
-//                } elseif (!$fake && $this->partOfMainLoop($x * 2, $y * 2)) {
-//                    // MAIN LOOP (real only) - light blue
-//                    echo $this->colour2($symbol, 30, 104);
-//                } elseif ($symbol === 'O') {
-//                    // Dark grey
-//                    echo $this->colour($symbol, 90);
-//                } elseif (!$realCoords) {
-//                    echo $this->colour($symbol, 37);
-//                } else {
-//                    echo $this->colour2($symbol, 103, 30);
-//                }
-//            }
-//            echo "\n";
-//        }
+        $colours = array_map(fn ($colour) => "\033[{colour}m", $colours);
+
+        return implode('', $colours) . $string . "\033[0m";
     }
 
-    public function colour(string $string, int $colour): string
+    /**
+     * Checks if pipe A has a connection toward pipe B. Does not check the inverse.
+     */
+    private function doesPipeLeadToAnother(array $a, array $b): bool
     {
-        return "\033[{$colour}m" . $string . "\033[0m";
-    }
-
-    public function colour2(string $string, int $colour1, int $colour2): string
-    {
-        return "\033[{$colour1}m\033[{$colour2}m" . $string . "\033[0m";
-    }
-
-    public function arePipesConnected(array $grid, array $a, array $b): bool
-    {
-        $symbolA = $grid[$a['y']][$a['x']];
-        $symbolB = $grid[$b['y']][$b['x']];
-
-        if ($symbolA === 'S') {
-            $symbolA = $this->startType;
-        } elseif ($symbolA === '.') {
-            return false;
-        }
-
-        if ($symbolB === 'S') {
-            $symbolB = $this->startType;
-        } elseif ($symbolB === '.') {
-            return false;
-        }
-
-        $directionsA = self::PIPE_TYPES[$symbolA];
-        $directionsB = self::PIPE_TYPES[$symbolB];
-
-        $connectionA = false;
-        $connectionB = false;
+        // Check connection from A to B
+        $symbol = $this->grid[$a['y']][$a['x']];
+        $directionsA = self::PIPE_TYPES[$symbol];
 
         foreach ($directionsA as $direction) {
             $relativeCoords = self::DIRECTIONS[$direction];
@@ -340,28 +317,25 @@ class Day10PipeMaze extends AbstractPuzzle
             $neighbourY = $relativeCoords['y'] + $a['y'];
             $neighbour = ['x' => $neighbourX, 'y' => $neighbourY];
             if (json_encode($neighbour) === json_encode($b)) {
-                $connectionA = true;
+                return true;
             }
         }
 
-        foreach ($directionsB as $direction) {
-            $relativeCoords = self::DIRECTIONS[$direction];
+        return false;
+    }
 
-            $neighbourX = $relativeCoords['x'] + $b['x'];
-            $neighbourY = $relativeCoords['y'] + $b['y'];
-            $neighbour = ['x' => $neighbourX, 'y' => $neighbourY];
-            if (json_encode($neighbour) === json_encode($a)) {
-                $connectionB = true;
-            }
-        }
-
-        return $connectionA && $connectionB;
+    /**
+     * Checks if two pipes are connected to each other.
+     */
+    public function arePipesConnected(array $a, array $b): bool
+    {
+        return $this->doesPipeLeadToAnother($a, $b) && $this->doesPipeLeadToAnother($b, $a);
     }
 
     private function partOfMainLoop(int $fakeX, int $fakeY): bool
     {
         if ($fakeX % 2 === 0 && $fakeY % 2 === 0) {
-            return isset($this->partOfMainLoop[$fakeY / 2][$fakeX / 2]);
+            return isset($this->mainLoop[$fakeY / 2][$fakeX / 2]);
         }
 
         return false;
@@ -369,7 +343,7 @@ class Day10PipeMaze extends AbstractPuzzle
 
     private function partOfFakeLoop(int $fakeX, int $fakeY): bool
     {
-        return isset($this->partOfFakeMainLoop[$fakeY][$fakeX]);
+        return isset($this->fakeLoop[$fakeY][$fakeX]);
     }
 
     private function partOfLoop(int $fakeX, int $fakeY): bool
@@ -377,6 +351,9 @@ class Day10PipeMaze extends AbstractPuzzle
         return $this->partOfMainLoop($fakeX, $fakeY) || $this->partOfFakeLoop($fakeX, $fakeY);
     }
 
+    /**
+     * Replaces all empty space and pipes outside the main loop with the O symbol (for 'outside').
+     */
     private function floodFill(): void
     {
         $queue = [['x' => 0, 'y' => 0]];
@@ -393,10 +370,8 @@ class Day10PipeMaze extends AbstractPuzzle
 
             foreach (self::DIRECTIONS as $direction) {
                 $neighbourCoords = ['x' => $node['x'] + $direction['x'], 'y' => $node['y'] + $direction['y']];
-                $neighbour = $this->fakeGrid[$neighbourCoords['y']][$neighbourCoords['x']] ?? null;
-//                if ($neighbour === '.') {
-                    $queue[] = $neighbourCoords;
-//                }
+                // Doesn't matter if it's not valid, it'll get filtered out by the if statement later
+                $queue[] = $neighbourCoords;
             }
         }
     }
